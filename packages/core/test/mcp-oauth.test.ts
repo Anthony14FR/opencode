@@ -158,6 +158,7 @@ describe("MCP OAuth", () => {
     expect(tokenRequests[0]?.get("grant_type")).toBe("authorization_code")
     expect(tokenRequests[0]?.get("code")).toBe("accepted")
     expect(tokenRequests[0]?.get("code_verifier")).not.toBeNull()
+    expect(tokenRequests[0]?.get("redirect_uri")).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/callback$/)
     expect(tokenRequests[0]?.get("resource")).toBe(server.url.href)
     expect(credential.metadata?.discovery).toEqual({ authorizationServer: server.url.href, resource: server.url.href })
   })
@@ -405,6 +406,29 @@ describe("MCP OAuth", () => {
         client_uri: "https://opencode.ai",
         logo_uri: "https://opencode.ai/web-app-manifest-512x512.png",
       })
+    })
+
+    test("redeems the code with the localhost redirect a server sent the browser back to", async () => {
+      const { server, registrations, tokenRequests } = authorizationServer({})
+      const sent = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { authorization, url } = yield* start(server)
+            const redirect = new URL(url.searchParams.get("redirect_uri")!)
+            redirect.searchParams.set("code", "accepted")
+            redirect.searchParams.set("state", url.searchParams.get("state")!)
+            // Clerk's consent page rewrites 127.0.0.1 to localhost; the browser reaches the same listener.
+            yield* Effect.promise(() => fetch(redirect, { headers: { host: `localhost:${redirect.port}` } }))
+            yield* authorization.callback
+            return redirect
+          }),
+        ),
+      ).finally(() => server.stop(true))
+      expect(sent.hostname).toBe("127.0.0.1")
+      expect(registrations[0]).toMatchObject({
+        redirect_uris: [`http://127.0.0.1:${sent.port}/callback`, `http://localhost:${sent.port}/callback`],
+      })
+      expect(tokenRequests[0]?.get("redirect_uri")).toBe(`http://localhost:${sent.port}/callback`)
     })
 
     test("reuses the client registered by an earlier login", async () => {
