@@ -382,6 +382,21 @@ export type SessionInboxCancelOperation<E = never> = (
   input: SessionInboxCancelInput,
 ) => Effect.Effect<SessionInboxCancelOutput, E>
 
+export type SessionInboxEditInput = {
+  readonly sessionID: Session.ID
+  readonly inboxID: SessionMessage.ID
+  readonly text: string
+  readonly files?: ReadonlyArray<PromptInput.FileAttachment> | undefined
+  readonly agents?: ReadonlyArray<AgentAttachment> | undefined
+  readonly skills?: ReadonlyArray<PromptInput.SkillAttachment> | undefined
+  readonly metadata?: { readonly [x: string]: unknown } | undefined
+  readonly delivery: SessionInbox.Delivery
+}
+export type SessionInboxEditOutput = void
+export type SessionInboxEditOperation<E = never> = (
+  input: SessionInboxEditInput,
+) => Effect.Effect<SessionInboxEditOutput, E>
+
 export type SessionInboxUpdateInput = {
   readonly sessionID: Session.ID
   readonly inboxID: SessionMessage.ID
@@ -593,6 +608,24 @@ export type SessionLogOutput =
             readonly sessionID: Session.ID
             readonly inboxID: SessionMessage.ID
             readonly item: SessionInbox.Item
+          }
+        }
+      | {
+          readonly id: Event.ID
+          readonly created: number
+          readonly metadata?: { readonly [x: string]: unknown } | undefined
+          readonly type: "session.inbox.edited"
+          readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
+          readonly location?:
+            | { readonly directory: AbsolutePath; readonly workspaceID?: Workspace.ID | undefined }
+            | undefined
+          readonly data: {
+            readonly id: SessionMessage.ID
+            readonly sessionID: Session.ID
+            readonly time: { readonly created: DateTime.Utc }
+            readonly type: "user"
+            readonly payload: SessionInbox.UserPayload
+            readonly delivery: SessionInbox.Delivery
           }
         }
       | {
@@ -1328,6 +1361,7 @@ export interface SessionApi<E = never> {
   readonly inbox: {
     readonly list: SessionInboxListOperation<E>
     readonly cancel: SessionInboxCancelOperation<E>
+    readonly edit: SessionInboxEditOperation<E>
     readonly update: SessionInboxUpdateOperation<E>
   }
   readonly instructions: {

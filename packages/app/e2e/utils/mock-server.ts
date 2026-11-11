@@ -126,6 +126,7 @@ export interface MockServerConfig {
   sessionStatus?: Resolvable<Record<string, { type: string }>>
   inbox?: unknown[] | (() => unknown[])
   onPrompt?: (input: { sessionID: string; body: Schema.JsonObject }) => void
+  onInboxEdit?: (input: { sessionID: string; inboxID: string; body: Schema.JsonObject }) => void
   onCompact?: (input: { sessionID: string; body: Schema.JsonObject }) => void
   generate?: (input: { sessionID: string; prompt: string }) => { text: string } | Promise<{ text: string }>
   onInboxChange?: (input: { sessionID: string; inboxID: string; action: "cancel" | "steer" | "queue" }) => void
@@ -1241,6 +1242,10 @@ function mockHandlers(
               text: "Side-question answer",
             },
           })),
+        sessionInboxEdit: (ctx) =>
+          Effect.sync(() =>
+            config.onInboxEdit?.({ ...ctx.params, body: Option.getOrElse(decodeJsonObject(ctx.payload), () => ({})) }),
+          ).pipe(Effect.andThen(noContent)),
         sessionInboxCancel: (ctx) =>
           Effect.sync(() =>
             config.onInboxChange?.({ sessionID: ctx.params.sessionID, inboxID: ctx.params.inboxID, action: "cancel" }),

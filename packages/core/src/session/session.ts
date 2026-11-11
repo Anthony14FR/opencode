@@ -142,6 +142,22 @@ export const make = Effect.fn("Session.make")(function* () {
     (sessionID: SessionSchema.ID, inboxID: SessionMessage.ID) => mutatePending(sessionID, inboxID, admission.queue),
     Effect.uninterruptible,
   )
+  const prepare = (session: SessionSchema.Info, messageID: SessionMessage.ID, input: SessionPrompt.Input) =>
+    SessionPrompt.prepare({ session, messageID, input }).pipe(
+      Effect.provideService(Instance.Service, instances),
+      Effect.provideService(FSUtil.Service, fs),
+    )
+  const editInbox = Effect.fn("Session.editInbox")(function* (
+    sessionID: SessionSchema.ID,
+    input: SessionPrompt.Input & { inboxID: SessionMessage.ID },
+  ) {
+    const session = yield* get(sessionID)
+    const item = yield* prepare(session, input.inboxID, input)
+    yield* Effect.gen(function* () {
+      yield* mutatePending(sessionID, input.inboxID, (ref) => admission.edit(ref, item))
+      if (item.delivery === "steer") yield* execution.wake(sessionID)
+    }).pipe(Effect.uninterruptible)
+  })
   const prompt = Effect.fn("Session.prompt")((sessionID: SessionSchema.ID, input: PromptRequest) =>
     Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
@@ -155,12 +171,7 @@ export const make = Effect.fn("Session.make")(function* () {
             delivery: input.delivery ?? "steer",
           })
           if (existing) return existing
-          const item = yield* restore(
-            SessionPrompt.prepare({ session, messageID, input }).pipe(
-              Effect.provideService(Instance.Service, instances),
-              Effect.provideService(FSUtil.Service, fs),
-            ),
-          )
+          const item = yield* restore(prepare(session, messageID, input))
           // Commit a staged revert only after preparation succeeds, before admitting new work.
           if (session.revert) yield* SessionRevert.commit(bus, session)
           return yield* admission.admit({
@@ -362,6 +373,7 @@ export const make = Effect.fn("Session.make")(function* () {
     resume,
     interrupt,
     cancelInbox,
+    editInbox,
     steerInbox,
     queueInbox,
     revert,
@@ -386,6 +398,7 @@ export const make = Effect.fn("Session.make")(function* () {
     const resume = operations.resume.bind(undefined, sessionID)
     const interrupt = operations.interrupt.bind(undefined, sessionID)
     const cancelInbox = operations.cancelInbox.bind(undefined, sessionID)
+    const editInbox = operations.editInbox.bind(undefined, sessionID)
     const steerInbox = operations.steerInbox.bind(undefined, sessionID)
     const queueInbox = operations.queueInbox.bind(undefined, sessionID)
     const stage = operations.revert.stage.bind(undefined, sessionID)
@@ -413,6 +426,7 @@ export const make = Effect.fn("Session.make")(function* () {
       resume,
       interrupt,
       cancelInbox,
+      editInbox,
       steerInbox,
       queueInbox,
       revert,

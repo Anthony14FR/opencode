@@ -237,6 +237,18 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
     ),
   )
 
+  const edit = Effect.fn("SessionInbox.edit")((input: PendingRef, item: Extract<Item, { type: "user" }>) =>
+    publishMutation(
+      input,
+      Effect.gen(function* () {
+        const original = yield* find(db, input.id)
+        if (original?.type !== "user" || original.sessionID !== input.sessionID || original.delivery !== "queue")
+          return yield* new LifecycleConflict({ id: input.id })
+        yield* bus.publish(SessionEvent.InboxEdited, { ...original, ...item })
+      }),
+    ),
+  )
+
   const steer = Effect.fn("SessionInbox.steer")((input: PendingRef) =>
     publishMutation(
       input,
@@ -264,6 +276,7 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
     reconcile,
     admit,
     admitCompaction,
+    edit,
     cancel,
     steer,
     queue,
@@ -333,6 +346,24 @@ export const projectDelivered = Effect.fn("SessionInbox.projectDelivered")(funct
     .pipe(Effect.orDie)
   if (!deleted) return yield* Effect.die(new LifecycleConflict({ id: input.id }))
   return fromRow(deleted)
+})
+
+export const projectEdited = Effect.fn("SessionInbox.projectEdited")(function* (db: DatabaseService, item: User) {
+  const updated = yield* db
+    .update(SessionInboxTable)
+    .set({ payload: encodeUser(item.payload), delivery: item.delivery })
+    .where(
+      and(
+        eq(SessionInboxTable.id, item.id),
+        eq(SessionInboxTable.session_id, item.sessionID),
+        eq(SessionInboxTable.type, "user"),
+        eq(SessionInboxTable.delivery, "queue"),
+      ),
+    )
+    .returning({ id: SessionInboxTable.id })
+    .get()
+    .pipe(Effect.orDie)
+  if (!updated) return yield* Effect.die(new LifecycleConflict({ id: item.id }))
 })
 
 export const projectCancelled = Effect.fn("SessionInbox.projectCancelled")(function* (

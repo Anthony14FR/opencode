@@ -48,9 +48,7 @@ export function createSessionQueue(input: {
         | { type: "undo"; item: QueuedPrompt; prompt: Prompt; context: ContextItem[] }
         | {
             type: "edit"
-            inboxIDs: string[]
             original: string
-            replacement: string
             item: QueuedPrompt | undefined
             prompt: Prompt
             text: string
@@ -85,24 +83,7 @@ export function createSessionQueue(input: {
         change.text,
       )
 
-      // Admit before cancelling so a failed replacement never discards the original. A queued edit
-      // rebuilds its position in one rewrite, which leaves the queue unchanged if any admission fails.
-      const admission = { ...replacement, id: change.replacement, delivery: change.delivery }
-
-      if (change.delivery === "queue") {
-        await rewrite(change.inboxIDs, { original: change.original, admission: { ...admission, resume: false } })
-        cancelEdit()
-
-        return
-      }
-
-      // Like a queued edit, an original the server delivered meanwhile keeps the edit draft instead of sending twice.
-      const pending = await server.api.session.inbox.list({ sessionID: input.sessionID })
-
-      if (!pending.some((item) => item.id === change.original && item.type === "user" && item.delivery === "queue"))
-        throw new Error("Queued prompt was delivered before the edit")
-      await data.session.prompt(admission)
-      await server.api.session.inbox.cancel({ sessionID: input.sessionID, inboxID: change.original })
+      await server.api.session.inbox.edit({ ...replacement, inboxID: change.original, delivery: change.delivery })
       cancelEdit()
     },
     onError: notify,
@@ -115,14 +96,7 @@ export function createSessionQueue(input: {
       .filter((item): item is QueuedPrompt => item.type === "user" && item.delivery === "queue"),
   )
 
-  const rows = createMemo(() => {
-    const replacement = mutation.isPending ? mutation.variables : undefined
-
-    return queuedPromptRows(
-      queued(),
-      replacement?.type === "edit" && replacement.delivery === "queue" ? replacement : undefined,
-    )
-  })
+  const rows = createMemo(() => queuedPromptRows(queued()))
 
   createEffect(() => {
     const editing = state.editing
@@ -132,11 +106,7 @@ export function createSessionQueue(input: {
   })
   onCleanup(() => cancelEdit())
 
-  // `replace` substitutes an edited prompt for the original at its position in the same rewrite.
-  const rewrite = async (
-    inboxIDs: string[],
-    replace?: { original: string; admission: Parameters<typeof data.session.prompt>[0] },
-  ) => {
+  const rewrite = async (inboxIDs: string[]) => {
     const pending = await server.api.session.inbox.list({ sessionID: input.sessionID })
 
     if (pending.some((item) => item.delivery === "queue" && item.type !== "user"))
@@ -144,10 +114,8 @@ export function createSessionQueue(input: {
     const current = pending.filter((item): item is QueuedPrompt => item.type === "user" && item.delivery === "queue")
     const ordered = inboxIDs.flatMap((id) => current.filter((item) => item.id === id))
 
-    // An edited prompt delivered meanwhile is no longer queued; fail so the edit draft stays.
-    if (ordered.length !== current.length || (replace && !current.some((item) => item.id === replace.original)))
-      throw new Error("Queued prompts changed before reordering")
-    const changed = ordered.findIndex((item, index) => item.id !== current[index]?.id || item.id === replace?.original)
+    if (ordered.length !== current.length) throw new Error("Queued prompts changed before reordering")
+    const changed = ordered.findIndex((item, index) => item.id !== current[index]?.id)
 
     if (changed < 0) return
 
@@ -157,30 +125,25 @@ export function createSessionQueue(input: {
     const replacements: string[] = []
 
     for (const item of ordered.slice(changed)) {
-      const admission =
-        item.id === replace?.original
-          ? replace.admission
-          : {
-              id: SessionMessage.ID.create(),
-              sessionID: input.sessionID,
-              text: item.payload.text,
-              files: item.payload.files?.map((file) => ({
-                uri: storedFileUri(file),
-                name: file.name,
-                description: file.description,
-                mention: file.mention,
-              })),
-              agents: item.payload.agents,
-              skills: item.payload.skills,
-              metadata: item.payload.metadata,
-              delivery: "queue" as const,
-              resume: false,
-            }
+      const admission = {
+        id: SessionMessage.ID.create(),
+        sessionID: input.sessionID,
+        text: item.payload.text,
+        files: item.payload.files?.map((file) => ({
+          uri: storedFileUri(file),
+          name: file.name,
+          description: file.description,
+          mention: file.mention,
+        })),
+        agents: item.payload.agents,
+        skills: item.payload.skills,
+        metadata: item.payload.metadata,
+        delivery: "queue" as const,
+        resume: false,
+      }
 
-      const id = admission.id ?? SessionMessage.ID.create()
-
-      replacements.push(id)
-      await data.session.prompt({ ...admission, id }).catch(async (error) => {
+      replacements.push(admission.id)
+      await data.session.prompt(admission).catch(async (error) => {
         await Promise.all(
           replacements.map((inboxID) =>
             server.api.session.inbox.cancel({ sessionID: input.sessionID, inboxID }).catch(() => undefined),
@@ -314,9 +277,7 @@ export function createSessionQueue(input: {
     if (pristine && delivery === "queue") return cancelEdit()
     mutation.mutate({
       type: "edit",
-      inboxIDs: queued().map((entry) => entry.id),
       original: editing.id,
-      replacement: SessionMessage.ID.create(),
       item,
       prompt,
       text,
@@ -366,22 +327,13 @@ export type SessionQueueView = Pick<
   "rows" | "editing" | "working" | "busy" | "steer" | "remove" | "undo" | "edit" | "reorder"
 >
 
-export function queuedPromptRows(items: QueuedPrompt[], replacement?: { original: string; replacement: string }) {
-  const replaced = replacement && items.some((item) => item.id === replacement.replacement)
-
-  return items.flatMap((item) =>
-    replaced && item.id === replacement.original
-      ? []
-      : [
-          {
-            id: item.id,
-            text: queuedPromptText(item),
-            attachments:
-              (item.payload.files?.length ?? 0) +
-              (readPromptPresentation(item.payload.metadata)?.attachments.length ?? 0),
-          },
-        ],
-  )
+export function queuedPromptRows(items: QueuedPrompt[]) {
+  return items.map((item) => ({
+    id: item.id,
+    text: queuedPromptText(item),
+    attachments:
+      (item.payload.files?.length ?? 0) + (readPromptPresentation(item.payload.metadata)?.attachments.length ?? 0),
+  }))
 }
 
 const decodeDisplayText = Schema.decodeUnknownOption(Schema.Struct({ displayText: Schema.NonEmptyString }))

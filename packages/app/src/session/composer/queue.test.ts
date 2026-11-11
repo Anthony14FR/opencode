@@ -21,24 +21,10 @@ const queued = [
   },
 ] satisfies SessionInboxInfo[]
 
-const other = { ...queued[0], id: "msg_other", payload: { text: "other" } }
-
-const edit = { original: "msg_original", replacement: "msg_replacement" }
-
 describe("queuedPromptRows", () => {
-  test.each([
-    ["keeps the edited prompt to one row while its replacement is admitted", queued, edit, [queued[1]]],
-    ["keeps the original visible until its replacement appears", [queued[0]], edit, [queued[0]]],
-    ["retains unrelated queue entries", queued, undefined, queued],
-    [
-      "keeps other prompts visible while a mutation replaces the edited prompt",
-      [queued[0], other, queued[1]],
-      edit,
-      [other, queued[1]],
-    ],
-  ])("%s", (_name, items, replacement, visible) => {
-    expect(queuedPromptRows(items, replacement)).toEqual(
-      visible.map((item) => ({ id: item.id, text: item.payload.text, attachments: 0 })),
+  test("renders prompts in queue order", () => {
+    expect(queuedPromptRows(queued)).toEqual(
+      queued.map((item) => ({ id: item.id, text: item.payload.text, attachments: 0 })),
     )
   })
 })

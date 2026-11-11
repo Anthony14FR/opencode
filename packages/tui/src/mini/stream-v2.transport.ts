@@ -1037,6 +1037,10 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       input.onSessionTitle?.(event.data.title)
       return
     }
+    if (event.type === "session.inbox.edited") {
+      mergePending(event.data)
+      return
+    }
     if (event.type === "session.inbox.enqueued") {
       if (event.data.item.type !== "user") return
       mergePending({

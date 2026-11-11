@@ -116,6 +116,7 @@ describe("public event manifest", () => {
         "session.forked.2",
         "session.inbox.delivered.1",
         "session.inbox.enqueued.1",
+        "session.inbox.edited.1",
         "session.inbox.cancelled.1",
         "session.inbox.delivery.changed.1",
         "session.execution.started.1",
