@@ -244,7 +244,11 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
         const original = yield* find(db, input.id)
         if (original?.type !== "user" || original.sessionID !== input.sessionID || original.delivery !== "queue")
           return yield* new LifecycleConflict({ id: input.id })
-        yield* bus.publish(SessionEvent.InboxEdited, { ...original, ...item })
+        yield* bus.publish(SessionEvent.InboxEdited, {
+          ...original,
+          ...item,
+          time: { created: DateTime.toEpochMillis(original.time.created) },
+        })
       }),
     ),
   )
@@ -348,7 +352,10 @@ export const projectDelivered = Effect.fn("SessionInbox.projectDelivered")(funct
   return fromRow(deleted)
 })
 
-export const projectEdited = Effect.fn("SessionInbox.projectEdited")(function* (db: DatabaseService, item: User) {
+export const projectEdited = Effect.fn("SessionInbox.projectEdited")(function* (
+  db: DatabaseService,
+  item: SessionEvent.InboxEdited["data"],
+) {
   const updated = yield* db
     .update(SessionInboxTable)
     .set({ payload: encodeUser(item.payload), delivery: item.delivery })

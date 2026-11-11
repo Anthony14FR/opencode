@@ -622,7 +622,7 @@ export type SessionLogOutput =
           readonly data: {
             readonly id: SessionMessage.ID
             readonly sessionID: Session.ID
-            readonly time: { readonly created: DateTime.Utc }
+            readonly time: { readonly created: number }
             readonly type: "user"
             readonly payload: SessionInbox.UserPayload
             readonly delivery: SessionInbox.Delivery
