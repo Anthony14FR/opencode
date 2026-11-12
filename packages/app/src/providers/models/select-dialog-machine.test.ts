@@ -190,6 +190,8 @@ describe("model dialog flyout", () => {
     })
     expect(placeFlyout(row, { left: 50, right: 500, top: 0, bottom: 600 }, false)).toEqual({ left: 340, top: 48 })
     expect(placeFlyout(row, { left: 0, right: 800, top: 0, bottom: 600 }, true)).toEqual({ left: 406, top: 48 })
+    // A flyout widened by long labels moves over the layer instead of overflowing it.
+    expect(placeFlyout(row, { left: 0, right: 600, top: 0, bottom: 600 }, false, 240)).toEqual({ left: 360, top: 48 })
     expect(correctFlyoutPosition({ left: 406, top: 48 }, { x: 456, y: 58 })).toEqual({ left: 356, top: 38 })
   })
 

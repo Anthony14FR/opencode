@@ -9,7 +9,8 @@ export const FLYOUT_AIM_TIMEOUT_MS = 300
 /** How long after a flyout closes that the next row's flyout still opens at once. */
 export const FLYOUT_WARM_MS = 300
 
-export const FLYOUT_WIDTH_PX = 160
+/** The flyout grows past this to fit its labels; placement assumes it until the flyout is measured. */
+export const FLYOUT_MIN_WIDTH_PX = 160
 
 export const FLYOUT_GAP_PX = 6
 
@@ -348,11 +349,16 @@ export function selectFlyoutPosition(state: DialogFlyoutState) {
 /**
  * 6px beside the row's end edge, else its start edge, else over the layer: always inside the layer that holds it.
  */
-export function placeFlyout(row: FlyoutRect, layer: FlyoutRect | undefined, rtl: boolean): FlyoutPosition {
-  const fits = (x: number) => !layer || (x >= layer.left && x + FLYOUT_WIDTH_PX <= layer.right)
-  const end = rtl ? row.left - FLYOUT_GAP_PX - FLYOUT_WIDTH_PX : row.right + FLYOUT_GAP_PX
-  const start = rtl ? row.right + FLYOUT_GAP_PX : row.left - FLYOUT_GAP_PX - FLYOUT_WIDTH_PX
-  const over = layer ? Math.max(layer.left, Math.min(end, layer.right - FLYOUT_WIDTH_PX)) : end
+export function placeFlyout(
+  row: FlyoutRect,
+  layer: FlyoutRect | undefined,
+  rtl: boolean,
+  width = FLYOUT_MIN_WIDTH_PX,
+): FlyoutPosition {
+  const fits = (x: number) => !layer || (x >= layer.left && x + width <= layer.right)
+  const end = rtl ? row.left - FLYOUT_GAP_PX - width : row.right + FLYOUT_GAP_PX
+  const start = rtl ? row.right + FLYOUT_GAP_PX : row.left - FLYOUT_GAP_PX - width
+  const over = layer ? Math.max(layer.left, Math.min(end, layer.right - width)) : end
   const left = fits(end) ? end : fits(start) ? start : over
 
   return { left, top: row.top - 2 }

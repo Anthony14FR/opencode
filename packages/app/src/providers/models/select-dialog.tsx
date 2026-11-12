@@ -717,6 +717,7 @@ export function DialogSelectModel(props: { provider?: string; model?: ModelState
       row.getBoundingClientRect(),
       row.closest("[data-dialog-layer]")?.getBoundingClientRect(),
       language.direction() === "rtl",
+      flyoutRect()?.width,
     )
   }
 
@@ -744,8 +745,13 @@ export function DialogSelectModel(props: { provider?: string; model?: ModelState
       return
     }
 
-    const position = measure(effect.id)
-    dispatch({ type: "placed", attempt: effect.attempt, position })
+    const first = measure(effect.id)
+    dispatch({ type: "placed", attempt: effect.attempt, position: first })
+    // A flyout that just appeared was placed at its minimum width; place it again now that its labels set the width.
+    const position = first && measure(effect.id)
+
+    if (position && position.left !== first?.left) dispatch({ type: "placed", attempt: effect.attempt, position })
+
     // A fixed element is placed against the viewport unless an ancestor contains it, as a component preview that holds
     // its dialogs does. Correct by where it landed, before it paints.
     const placed = position ? flyoutRect() : undefined
@@ -1081,7 +1087,7 @@ export function DialogSelectModel(props: { provider?: string; model?: ModelState
                     onClick={() => choose(item(), value ?? null)}
                   >
                     <span data-slot="menu-v2-item-content" class="capitalize">
-                      {value ?? language.t("common.default")}
+                      <span class="min-w-0 truncate">{value ?? language.t("common.default")}</span>
                     </span>
                     <span data-slot="menu-v2-item-indicator" data-checked={variant(item()) === value ? "" : undefined}>
                       <Icon name="check" size="small" />

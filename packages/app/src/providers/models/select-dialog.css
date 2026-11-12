@@ -225,8 +225,10 @@
 
 [data-component="menu-v2-content"][data-slot="model-dialog-flyout"] {
   position: fixed;
-  /* One width for every model, matching the 160px its placement assumes. */
-  width: 160px;
+  /* As wide as the longest label, from 160px up to what the window leaves; longer labels truncate. */
+  width: max-content;
+  min-width: 160px;
+  max-width: min(320px, calc(100vw - 24px));
   max-height: 400px;
   padding: 0;
   animation: none;
@@ -237,6 +239,8 @@
 
   /* The model stats that close the flyout. */
   [data-slot="menu-scroll-content"] > :last-child {
+    /* The wrapping stats take the labels' width instead of widening the flyout. */
+    contain: inline-size;
     font-size: 11px;
     line-height: 16px;
     cursor: default;
